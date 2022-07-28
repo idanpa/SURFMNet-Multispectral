@@ -16,10 +16,8 @@ def penalty_bijectivity(C_est_AB, C_est_BA):
     """
 
     return tf.nn.l2_loss(
-                        tf.subtract(tf.matmul(C_est_AB, C_est_BA),
-                                    tf.eye(tf.shape(C_est_AB)[1])
-                                    )
-                        )
+                tf.subtract(
+                    tf.matmul(C_est_AB, C_est_BA), tf.eye(tf.shape(C_est_AB)[2])))
 
 
 def penalty_ortho(C_est):
@@ -32,11 +30,7 @@ def penalty_ortho(C_est):
 
     return tf.nn.l2_loss(
                          tf.subtract(
-                             tf.matmul(
-                                       tf.transpose(C_est, perm=[0, 2, 1]),
-                                       C_est),
-                             tf.eye(tf.shape(C_est)[1]))
-                        )
+                             tf.matmul(tf.transpose(C_est, perm=[0, 1, 3, 2]), C_est), tf.eye(tf.shape(C_est)[2])))
 
 
 def penalty_laplacian_commutativity(C_est, source_evals, target_evals):
@@ -50,8 +44,8 @@ def penalty_laplacian_commutativity(C_est, source_evals, target_evals):
     """
 
     # Quicker and less memory than taking diagonal matrix
-    eig1 = tf.einsum('abc,ac->abc', C_est, source_evals)
-    eig2 = tf.einsum('ab,abc->abc', target_evals, C_est)
+    eig1 = tf.einsum('apbc,apc->apbc', C_est, source_evals)
+    eig2 = tf.einsum('apb,apbc->apbc', target_evals, C_est)
 
     return tf.nn.l2_loss(tf.subtract(eig2, eig1))
 
@@ -102,26 +96,20 @@ def penalty_desc_commutativity(
     # Size : # [batch, num_desc, 1, num_vertices]
 
     # This is quicker than taking a diagonal matrix for the descriptor
-    F_diag_reduce1 = tf.einsum('abcd,ade->abcde', F_expand, source_evecs)
-    G_diag_reduce1 = tf.einsum('abcd,ade->abcde', G_expand, target_evecs)
+    F_diag_reduce1 = tf.einsum('abcd,apde->apbcde', F_expand, source_evecs)
+    G_diag_reduce1 = tf.einsum('abcd,apde->apbcde', G_expand, target_evecs)
     # Size : [batch, num_desc, 1, num_vertices, num_evecs]
 
-    F_diag_reduce2 = tf.einsum(
-                            'afd,abcde->abcfe',
-                            source_evecs_trans,
-                            F_diag_reduce1)
-    G_diag_reduce2 = tf.einsum(
-                            'afd,abcde->abcfe',
-                            target_evecs_trans,
-                            G_diag_reduce1)
+    F_diag_reduce2 = tf.einsum('apfd,apbcde->apbcfe', source_evecs_trans, F_diag_reduce1)
+    G_diag_reduce2 = tf.einsum('apfd,apbcde->apbcfe', target_evecs_trans, G_diag_reduce1)
     # Size : #[batch, num_desc, 1, num_evecs, num_evecs]
 
-    C_est_expand = tf.expand_dims(tf.expand_dims(C_est, 1), 1)
+    C_est_expand = tf.expand_dims(tf.expand_dims(C_est, 2), 2)
 
-    C_est_tile = tf.tile(C_est_expand, [1, num_desc, 1, 1, 1])
+    C_est_tile = tf.tile(C_est_expand, [1, 1, num_desc, 1, 1, 1])
 
-    term_source = tf.einsum('abcde,abcef->abcdf', C_est_tile, F_diag_reduce2)
-    term_target = tf.einsum('abcef,abcfd->abced', G_diag_reduce2, C_est_tile)
+    term_source = tf.einsum('apbcde,apbcef->apbcdf', C_est_tile, F_diag_reduce2)
+    term_target = tf.einsum('apbcef,apbcfd->apbced', G_diag_reduce2, C_est_tile)
 
     subtract = tf.subtract(term_source, term_target)
 
@@ -197,15 +185,11 @@ def func_map_layer(
     # IMAGES FOR TENSORBOARD #
     ##########################
 
-    C_est_AB = tf.reshape(
-        C_est_AB,
-        [FLAGS.batch_size, tf.shape(C_est_AB)[1], tf.shape(C_est_AB)[2], 1])
-    tf.summary.image("Estimated_FuncMap_AB", C_est_AB, max_outputs=1)
+    # C_est_AB = tf.reshape(C_est_AB, [FLAGS.batch_size, FLAGS.num_ch, tf.shape(C_est_AB)[2], tf.shape(C_est_AB)[3], 1])
+    # tf.summary.image("Estimated_FuncMap_AB", C_est_AB, max_outputs=1)
 
-    C_est_BA = tf.reshape(
-        C_est_BA,
-        [FLAGS.batch_size, tf.shape(C_est_BA)[1], tf.shape(C_est_BA)[2], 1])
-    tf.summary.image("Estimated_FuncMap_BA", C_est_BA, max_outputs=1)
+    # C_est_BA = tf.reshape(C_est_BA, [FLAGS.batch_size, FLAGS.num_ch, tf.shape(C_est_BA)[2], tf.shape(C_est_BA)[3], 1])
+    # tf.summary.image("Estimated_FuncMap_BA", C_est_BA, max_outputs=1)
 
     return loss, E1, E2, E3, E4
 

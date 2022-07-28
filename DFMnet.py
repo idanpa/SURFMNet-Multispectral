@@ -63,34 +63,35 @@ def dfmnet_model(
     #  Project output features on the shape Laplacian eigen functions
     layer_C_est = i_layer + 1   # Grab current layer index
     F = net['layer_%d_source' % (layer_C_est - 1)]
-    A = tf.matmul(source_evecs_trans, F)
+    A = tf.matmul(tf.transpose(source_evecs_trans, [1,0,2,3]), F)
     net['A'] = A
     G = net['layer_%d_target' % (layer_C_est - 1)]
-    B = tf.matmul(target_evecs_trans, G)
+    B = tf.matmul(tf.transpose(target_evecs_trans, [1, 0, 2, 3]), G)
     net['B'] = B
 
+    total_net_loss = 0
     #  FM-layer: evaluate C_est
-    net['C_est_AB'], safeguard_inverse = solve_ls(A, B)
-
-    net['C_est_BA'], safeguard_inverse = solve_ls(B, A)
+    C_est_AB, safeguard_inverse = solve_ls(A, B)
+    C_est_BA, safeguard_inverse = solve_ls(B, A)
 
     #  Evaluate loss without any ground-truth or geodesic distance matrix
     with tf.variable_scope("func_map_loss"):
         net_loss, E1, E2, E3, E4 = func_map_layer(
-                                net['C_est_AB'], net['C_est_BA'],
+                                C_est_AB, C_est_BA,
                                 source_evecs, source_evecs_trans, source_evals,
                                 target_evecs, target_evecs_trans, target_evals,
-                                F, G
-                                                )
+                                F, G)
 
     tf.summary.scalar('net_loss_Bijectivity', E1)
     tf.summary.scalar('net_loss_Orthogonality', E2)
     tf.summary.scalar('net_loss_LaplacianCommutativity', E3)
     tf.summary.scalar('net_loss_DescriptorCommutativity', E4)
-    tf.summary.scalar('net_loss', net_loss)
+    total_net_loss += net_loss
+
+    tf.summary.scalar('net_loss', total_net_loss)
     merged = tf.summary.merge_all()
 
-    return net_loss, safeguard_inverse, merged, net
+    return total_net_loss, safeguard_inverse, merged, net
 
 
 def res_layer(x_in, dims_out, scope, phase):
@@ -156,12 +157,12 @@ def solve_ls(A, B):
     """
 
     # Transpose input matrices
-    At = tf.transpose(A, [0, 2, 1])
-    Bt = tf.transpose(B, [0, 2, 1])
+    At = tf.transpose(A, [0, 1, 3, 2])
+    Bt = tf.transpose(B, [0, 1, 3, 2])
 
     # Solve C via least-squares
     Ct_est = tf.matrix_solve_ls(At, Bt)
-    C_est = tf.transpose(Ct_est, [0, 2, 1], name='C_est')
+    C_est = tf.transpose(Ct_est, [1, 0, 3, 2], name='C_est')
 
     # Calculate error for safeguarding
     safeguard_inverse = tf.nn.l2_loss(tf.matmul(At, Ct_est) - Bt)
